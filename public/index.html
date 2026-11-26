@@ -28,6 +28,18 @@
   button:disabled { opacity:.55; cursor:default; }
   .foot button { padding:6px 10px; font-size:.9rem; }
   .foot { margin-top:18px; display:flex; justify-content:space-between; align-items:center; font-size:.9rem; }
+
+  .taunt { margin:0 0 14px; font-weight:700; line-height:1.1; color:var(--x); font-style:italic; font-size:1.6rem; }
+  .taunt.hide { display:none; }
+  @media (min-width:900px) {
+    .taunt { position:fixed; left:3vw; top:50%; transform:translateY(-50%) rotate(-4deg);
+             width:calc((100vw - 360px) / 2 - 6vw); margin:0; font-size:clamp(2rem,4.2vw,4.5rem); text-align:left; }
+  }
+  #lose { position:fixed; inset:0; display:grid; place-items:center; background:rgba(27,42,65,.85); padding:20px; z-index:10; }
+  #lose.hide { display:none; }
+  #lose .box { background:var(--paper); border:3px solid var(--x); padding:28px 24px; max-width:420px; text-align:center; animation:pop .25s ease-out; }
+  #lose .big { font-size:2.2rem; font-weight:700; color:var(--x); line-height:1.15; margin:0 0 18px; }
+  @keyframes pop { from { transform:scale(.6); opacity:0; } to { transform:scale(1); opacity:1; } }
 </style>
 </head>
 <body>
@@ -42,6 +54,7 @@
   </section>
 
   <section id="game" class="hide">
+    <div id="taunt" class="taunt hide">kung sino matalo di naliligo</div>
     <div id="status"></div>
     <div id="board"></div>
     <div class="foot">
@@ -51,11 +64,18 @@
   </section>
 </main>
 
+<div id="lose" class="hide">
+  <div class="box">
+    <p class="big">asim mo, maligo ka naman</p>
+    <button id="closeLose">OK, maliligo na</button>
+  </div>
+</div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const socket = io();
 const $ = id => document.getElementById(id);
-let mark = null, state = null;
+let mark = null, state = null, loseShown = false;
 
 function enter(code) {
   code = code.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -68,10 +88,12 @@ $('create').onclick = () => {
   enter(c);
 };
 $('join').onclick = () => enter($('code').value);
+$('closeLose').onclick = () => $('lose').classList.add('hide');
 $('again').onclick = () => socket.emit('rematch');
 $('leave').onclick = () => {
   socket.emit('leave');
-  mark = null; state = null;
+  mark = null; state = null; loseShown = false;
+  $('lose').classList.add('hide');
   $('game').classList.add('hide');
   $('lobby').classList.remove('hide');
 };
@@ -93,6 +115,16 @@ function render() {
   else if (!mark) msg = 'Spectating: ' + s.turn + '’s turn';
   else msg = myTurn ? 'Your turn (' + mark + ')' : 'Opponent’s turn…';
   $('status').textContent = msg;
+
+  // Big side text only while the match is actually being played
+  $('taunt').classList.toggle('hide', !(s.seated.X && s.seated.O && !s.winner));
+
+  // Popup for the loser only
+  if (!s.winner) { loseShown = false; $('lose').classList.add('hide'); }
+  else if (mark && s.winner !== 'draw' && s.winner !== mark && !loseShown) {
+    loseShown = true;
+    $('lose').classList.remove('hide');
+  }
 
   const board = $('board'); board.innerHTML = '';
   s.board.forEach((v, i) => {
