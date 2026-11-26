@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tic-Tac-Toe Live</title>
+<style>
+  :root { --paper:#f3efe6; --ink:#1b2a41; --x:#c8372d; --o:#1b6ca8; --grid:#1b2a41; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--paper); color:var(--ink);
+         font-family:Georgia,"Times New Roman",serif; padding:20px; }
+  main { width:100%; max-width:360px; text-align:center; }
+  h1 { font-size:2rem; margin:0 0 6px; letter-spacing:-.02em; }
+  p.sub { margin:0 0 22px; opacity:.7; }
+  input, button { font:inherit; padding:10px 14px; border:2px solid var(--ink); background:transparent; color:var(--ink); }
+  button { cursor:pointer; background:var(--ink); color:var(--paper); }
+  button.ghost { background:transparent; color:var(--ink); }
+  input { width:100%; text-align:center; margin:10px 0; text-transform:lowercase; }
+  .hide { display:none; }
+  #status { font-size:1.15rem; margin:10px 0 16px; min-height:1.5em; }
+  #board { display:grid; grid-template-columns:repeat(3,1fr); }
+  .cell { aspect-ratio:1; font-size:3rem; font-weight:700; background:transparent; color:var(--ink);
+          border:0; border-right:3px solid var(--grid); border-bottom:3px solid var(--grid); padding:0; }
+  .cell:nth-child(3n) { border-right:0; } .cell:nth-child(n+7) { border-bottom:0; }
+  .cell.X { color:var(--x); } .cell.O { color:var(--o); }
+  .cell.win { background:rgba(27,42,65,.12); }
+  .cell:disabled { cursor:default; }
+  button:disabled { opacity:.55; cursor:default; }
+  .foot button { padding:6px 10px; font-size:.9rem; }
+  .foot { margin-top:18px; display:flex; justify-content:space-between; align-items:center; font-size:.9rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tic-Tac-Toe</h1>
+
+  <section id="lobby">
+    <p class="sub">Play a friend in real time.</p>
+    <button id="create" style="width:100%">Create a game</button>
+    <input id="code" placeholder="or enter a room code" maxlength="12">
+    <button id="join" class="ghost" style="width:100%">Join game</button>
+  </section>
+
+  <section id="game" class="hide">
+    <div id="status"></div>
+    <div id="board"></div>
+    <div class="foot">
+      <span>Room: <b id="room"></b></span>
+      <span><button id="again" class="hide">Rematch</button> <button id="leave" class="ghost">Leave room</button></span>
+    </div>
+  </section>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const $ = id => document.getElementById(id);
+let mark = null, state = null;
+
+function enter(code) {
+  code = code.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (code.length >= 3) socket.emit('join', code);
+}
+
+$('create').onclick = () => {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+  let c = ''; for (let i = 0; i < 4; i++) c += chars[Math.floor(Math.random() * chars.length)];
+  enter(c);
+};
+$('join').onclick = () => enter($('code').value);
+$('again').onclick = () => socket.emit('rematch');
+$('leave').onclick = () => {
+  socket.emit('leave');
+  mark = null; state = null;
+  $('game').classList.add('hide');
+  $('lobby').classList.remove('hide');
+};
+
+socket.on('joined', ({ code, mark: m }) => {
+  mark = m;
+  $('room').textContent = code;
+  $('lobby').classList.add('hide');
+  $('game').classList.remove('hide');
+});
+socket.on('state', s => { state = s; render(); });
+
+function render() {
+  const s = state, myTurn = mark && s.turn === mark && !s.winner && s.seated.X && s.seated.O;
+  let msg;
+  if (s.winner === 'draw') msg = 'Draw.';
+  else if (s.winner) msg = s.winner === mark ? 'You win!' : mark ? 'You lose.' : s.winner + ' wins.';
+  else if (!s.seated.X || !s.seated.O) msg = 'Waiting for an opponent…';
+  else if (!mark) msg = 'Spectating: ' + s.turn + '’s turn';
+  else msg = myTurn ? 'Your turn (' + mark + ')' : 'Opponent’s turn…';
+  $('status').textContent = msg;
+
+  const board = $('board'); board.innerHTML = '';
+  s.board.forEach((v, i) => {
+    const b = document.createElement('button');
+    b.className = 'cell ' + v + (s.line && s.line.includes(i) ? ' win' : '');
+    b.textContent = v;
+    b.disabled = !myTurn || !!v;
+    b.onclick = () => socket.emit('move', i);
+    board.appendChild(b);
+  });
+  const again = $('again');
+  if (s.winner && mark) {
+    const mine = s.rematch[mark], theirs = s.rematch[mark === 'X' ? 'O' : 'X'];
+    again.classList.remove('hide');
+    again.disabled = mine;
+    again.textContent = mine ? 'Waiting for opponent…' : theirs ? 'Accept rematch' : 'Rematch';
+  } else again.classList.add('hide');
+}
+</script>
+</body>
+</html>
